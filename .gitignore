@@ -1,0 +1,56 @@
+# ------------------------------------
+# 1. CRITICAL PRIVATE AND SECURITY FILES
+# (NEVER COMMIT THESE)
+# ------------------------------------
+# Any file that may hold local API keys, tokens, or credentials.
+*.env
+.vscode/settings.json
+.vscode/tasks.json
+.local-secrets.json
+.DS_Store
+
+# Placeholder for your specific ARAGS/GCP local credential files
+# If you used any local files for testing, add them here:
+arags-test-key.json
+arags_local_config.php
+
+# ------------------------------------
+# 2. STANDARD WORDPRESS IGNORES
+# ------------------------------------
+# General WordPress files often used in testing environments
+wp-config.php
+wp-config-local.php
+
+# Common cache/log files
+*.log
+*.err
+/debug.log
+
+# ------------------------------------
+# 3. BUILD ARTIFACTS AND DEPENDENCIES
+# (Ignore if you use npm, yarn, composer, etc.)
+# ------------------------------------
+/node_modules
+/vendor
+/composer.lock
+/package-lock.json
+/yarn.lock
+/dist/
+/build/
+
+# ------------------------------------
+# 4. OPERATING SYSTEM / IDE ARTIFACTS
+# ------------------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Visual Studio Code
+.vscode/*
+!/.vscode/settings.json # Optionally keep settings for the project
+
+# PHPStorm/Webstorm
+.idea/
+*.iml
