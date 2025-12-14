@@ -1,5 +1,5 @@
 🤖 Autonomous-WP-Utility-Engine
-Author: Donald Lisk (donaldleask-sre-aie)
+Author: Donald Leask (donaldleask-sre-aie)
 
 A powerful, natural-language-driven agent utilizing the Gemini API to manage and automate core WordPress system utilities. Designed for high-velocity site reliability and administrative toil reduction.
 
