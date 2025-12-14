@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Autonomous WP Utility Engine
  * Description: An open-source, natural-language-driven agent utilizing the Gemini API to manage and automate WordPress system utilities and SRE tasks.
- * Version: 1.0
+ * Version: 1.0.3
  * Author: Donald Lisk (donaldleask-sre-aie)
  * Author URI: https://github.com/donaldleask-sre-aie/
  * License: GPL-3.0
@@ -15,30 +15,18 @@
 defined('ABSPATH') || exit;
 
 // =============================================================================
-// 1. GEMINI API AUTHENTICATION HELPER (REPLACED GOOGLE VERTEX AUTH)
-//    NOTE: For the open-source version, the complex JWT signing for Vertex AI
-//    is replaced by using a simpler API Key or standard Google AI SDK integration.
-//    However, to maintain the complex structure for advanced users who WANT JWT
-//    we rename the class and methods, but strongly recommend replacement with
-//    the public Google AI PHP SDK for ease of use.
+// 1. GEMINI API AUTHENTICATION HELPER
 // =============================================================================
 class GeminiAuthHelper {
-    // This method is DANGEROUSLY complex for a typical user and ties to GCP.
-    // For this open-source release, we will leave the shell but change the name
-    // to signal the developer should replace this with a standard API key check.
     public static function get_access_token($json_key) {
         $key_data = json_decode($json_key, true);
         if (empty($key_data) || !isset($key_data['private_key'])) {
-            // If the user provides an API key instead of JSON, we treat it as the token.
-            // THIS IS NOT STANDARD BUT A GENERIC FALLBACK FOR OPEN SOURCE.
             if (strlen($json_key) > 5) {
                 return $json_key;
             }
             return new WP_Error('auth_error', 'Invalid Google Service Account JSON Key provided for advanced authentication, or missing API Key.');
         }
 
-        // JWT Logic for advanced GCP Service Account (SA) auth retained but renamed
-        // ... (Original JWT signing logic remains here, renamed) ...
         $header = ['alg' => 'RS256', 'typ' => 'JWT'];
         $now = time();
         $payload = [
@@ -65,22 +53,20 @@ class GeminiAuthHelper {
 }
 
 // =============================================================================
-// 2. CORE AGENT CLASS (RENAMED)
+// 2. CORE AGENT CLASS
 // =============================================================================
 class AutonomousUtilityAgent {
 
     private $table_audit;
     private $table_subscribers;
     private $project_id;
-    private $location; // Retained for Gemini regional endpoints
+    private $location;
 
     public function __construct() {
         global $wpdb;
-        // Generic Table Prefixes (arags -> auto_util)
         $this->table_audit = $wpdb->prefix . 'auto_util_audit';
         $this->table_subscribers = $wpdb->prefix . 'auto_util_subscribers';
         
-        // Generic Option Keys (arags -> auto_util)
         $this->project_id = get_option('auto_util_gcp_project_id');
         $this->location = get_option('auto_util_gcp_location', 'us-central1');
 
@@ -89,10 +75,10 @@ class AutonomousUtilityAgent {
         register_activation_hook(__FILE__, [$this, 'install_db']);
         add_action('admin_menu', [$this, 'register_settings_page']);
         add_action('admin_footer', [$this, 'inject_global_ui']);
-        add_action('wp_ajax_auto_util_command', [$this, 'handle_command']); // AJAX Hook Renamed
+        add_action('wp_ajax_auto_util_command', [$this, 'handle_command']);
         
         add_filter('pre_comment_approved', [$this, 'autonomous_spam_killer'], 10, 2);
-        add_action('auto_util_hourly_event', [$this, 'autonomous_maintenance']); // Cron Hook Renamed
+        add_action('auto_util_hourly_event', [$this, 'autonomous_maintenance']);
         if (!wp_next_scheduled('auto_util_hourly_event')) {
             wp_schedule_event(time(), 'hourly', 'auto_util_hourly_event');
         }
@@ -101,16 +87,15 @@ class AutonomousUtilityAgent {
         add_action('init', [$this, 'run_active_snippets']);
 
         add_action('phpmailer_init', [$this, 'configure_smtp_mailer']);
-        add_action('wp_ajax_auto_util_subscribe', [$this, 'handle_subscription']); // AJAX Hook Renamed
-        add_action('wp_ajax_nopriv_auto_util_subscribe', [$this, 'handle_subscription']); // AJAX Hook Renamed
+        add_action('wp_ajax_auto_util_subscribe', [$this, 'handle_subscription']);
+        add_action('wp_ajax_nopriv_auto_util_subscribe', [$this, 'handle_subscription']);
     }
 
     // --- DATABASE & LOGGING ---
 
     public function check_db_health() {
         global $wpdb;
-        $table_snippets = $wpdb->prefix . 'auto_util_code_snippets'; // Table Renamed
-        // Check for snippets AND subscribers table
+        $table_snippets = $wpdb->prefix . 'auto_util_code_snippets';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table_snippets'") != $table_snippets || 
             $wpdb->get_var("SHOW TABLES LIKE '$this->table_subscribers'") != $this->table_subscribers) {
             $this->install_db();
@@ -131,7 +116,7 @@ class AutonomousUtilityAgent {
             PRIMARY KEY  (id)
         ) $charset_collate;";
 
-        $table_snippets = $wpdb->prefix . 'auto_util_code_snippets'; // Table Renamed
+        $table_snippets = $wpdb->prefix . 'auto_util_code_snippets';
         $sql_snippets = "CREATE TABLE $table_snippets (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             name varchar(255) NOT NULL,
@@ -195,11 +180,9 @@ class AutonomousUtilityAgent {
     // --- SETTINGS ---
 
     public function register_settings_page() {
-        // Menu name and slug renamed
         add_options_page('Autonomous Utility', 'Autonomous Utility', 'manage_options', 'auto-util-config', function() {
             if (isset($_POST['submit'])) {
                 if (!check_admin_referer('auto_util_config_save')) return;
-                // Option keys renamed
                 update_option('auto_util_service_account_json', stripslashes($_POST['sa_json']));
                 update_option('auto_util_gcp_project_id', sanitize_text_field($_POST['project_id']));
                 update_option('auto_util_gcp_location', sanitize_text_field($_POST['location']));
@@ -210,7 +193,6 @@ class AutonomousUtilityAgent {
                 update_option('auto_util_smtp_port', sanitize_text_field($_POST['smtp_port']));
                 echo '<div class="notice notice-success"><p>Settings Saved.</p></div>';
             }
-            // Retrieving existing options
             $sa_json = get_option('auto_util_service_account_json', '');
             $pid = get_option('auto_util_gcp_project_id', '');
             $loc = get_option('auto_util_gcp_location', 'us-central1');
@@ -251,7 +233,6 @@ class AutonomousUtilityAgent {
         if (!current_user_can('manage_options')) return;
         ?>
         <style>
-            /* Renamed all IDs and classes (arags -> auto-util) */
             #auto-util-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 99998; backdrop-filter: blur(5px); }
             #auto-util-terminal-window { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 600px; max-width: 90%; height: 500px; z-index: 99999; background: #0d0d0d; border: 1px solid #00ff41; box-shadow: 0 0 30px rgba(0, 255, 65, 0.2); font-family: 'Courier New', monospace; display: flex; flex-direction: column; }
             .auto-util-header { background: #001a05; padding: 10px; border-bottom: 1px solid #00ff41; color: #00ff41; font-weight: bold; display: flex; justify-content: space-between; }
@@ -269,7 +250,6 @@ class AutonomousUtilityAgent {
         </div>
         <script>
             document.addEventListener('keydown', function(e) { if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); var el = document.getElementById('auto-util-terminal-window'), ov = document.getElementById('auto-util-modal-overlay'); var disp = el.style.display === 'none' ? 'flex' : 'none'; el.style.display = disp; ov.style.display = disp; if(disp === 'flex') document.getElementById('auto-util-prompt').focus(); } if (e.key === 'Escape') { document.getElementById('auto-util-terminal-window').style.display = 'none'; document.getElementById('auto-util-modal-overlay').style.display = 'none'; } });
-            // Renamed AJAX action 'arags_command' to 'auto_util_command'
             document.getElementById('auto-util-prompt').addEventListener('keypress', function(e) { if (e.key === 'Enter') { var val = this.value; if(!val) return; this.value = ''; appendLog('USER', val); document.getElementById('auto-util-loader').style.display = 'inline'; fetch(ajaxurl, { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'action=auto_util_command&prompt=' + encodeURIComponent(val) }).then(res => res.json()).then(data => { document.getElementById('auto-util-loader').style.display = 'none'; appendLog(data.success?'AGENT':'ERROR', data.success?data.data.text:data.data); }); } });
             function appendLog(role, text) { var div = document.createElement('div'); div.className = role === 'USER' ? 'msg-user' : 'msg-agent'; div.innerHTML = (role === 'USER' ? 'USER: ' : '') + text; var term = document.getElementById('auto-util-log'); term.appendChild(div); term.scrollTop = term.scrollHeight; }
         </script>
@@ -284,46 +264,33 @@ class AutonomousUtilityAgent {
         if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
         $prompt = sanitize_text_field($_POST['prompt']);
         $history = [['role' => 'user', 'parts' => [['text' => $prompt]]]];
-        $response = $this->call_gemini_api($history); // Function renamed
+        $response = $this->call_gemini_api($history);
         if (is_wp_error($response)) wp_send_json_error($response->get_error_message());
         wp_send_json_success($response);
     }
 
-    // Function Renamed and Configuration Keys Updated
     private function call_gemini_api($history) {
-        // Option Keys Renamed
         $json_key = get_option('auto_util_service_account_json');
-        // $this->project_id is optional if the user uses an API Key instead of SA
-        // if (empty($json_key) || empty($this->project_id)) return new WP_Error('config_error', 'Utility Agent Config Missing');
         if (empty($json_key)) return new WP_Error('config_error', 'Gemini API Key or Service Account JSON Missing');
         
-        $token = GeminiAuthHelper::get_access_token($json_key); // Class renamed
+        $token = GeminiAuthHelper::get_access_token($json_key);
         if (is_wp_error($token)) return $token;
 
-        // Endpoint maintained for Google AI Platform / Vertex compatibility
         $endpoint = "https://{$this->location}-aiplatform.googleapis.com/v1/projects/{$this->project_id}/locations/{$this->location}/publishers/google/models/gemini-2.5-flash:generateContent";
 
         $tools = ['function_declarations' => array_merge($this->get_legacy_tool_definitions(), $this->get_god_mode_tool_definitions())];
         $payload = [
             'contents' => $history,
             'tools' => [['function_declarations' => $tools['function_declarations']]],
-            // System Prompt Updated to be generic and remove versioning/branding
-            'system_instruction' => ['parts' => [['text' => 'You are an Autonomous WordPress Utility Agent powered by Gemini. Use "configure_smtp" to set up email. Use "broadcast_newsletter" to email all subscribers. Assume the largest scope for commands.']]]
+            // ** V3.12 PROMPT UPDATE **
+            'system_instruction' => ['parts' => [['text' => 'You are an Autonomous WordPress Utility Agent powered by Gemini. Use "configure_smtp" to set up email. Use "broadcast_newsletter" to email all subscribers. Use "add_draft_excerpts" to fix excerpts. Use "manage_draft_terms" to tag drafts manually, or "generate_draft_tags" to auto-tag. Assume the largest scope for commands.']]]
         ];
 
-        // Authorization uses the token (which could be the raw API key or the JWT)
-        $headers = [
-            'Content-Type' => 'application/json',
-            'timeout' => 60
-        ];
+        $headers = ['Content-Type' => 'application/json', 'timeout' => 60];
         
-        // Use standard API Key if the token returned is the key itself
         if (strlen($token) > 5 && strpos($token, '.') === false) {
-             // Treat as a direct API Key (no JWT signature)
              $endpoint = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=' . $token;
-             $headers['Content-Type'] = 'application/json';
         } else {
-            // Treat as JWT/Bearer Token
             $headers['Authorization'] = 'Bearer ' . $token;
         }
 
@@ -331,7 +298,6 @@ class AutonomousUtilityAgent {
         if (is_wp_error($response)) return $response;
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
-        // ... (Tool execution logic remains the same) ...
         if (isset($body['candidates'][0]['content']['parts'][0]['functionCall'])) {
             $call = $body['candidates'][0]['content']['parts'][0]['functionCall'];
             return $this->execute_tool($call['name'], $call['args']);
@@ -342,12 +308,10 @@ class AutonomousUtilityAgent {
     }
 
     private function execute_tool($name, $args) {
-        // ... (Tool execution logic remains the same) ...
         $result = "Function $name executed successfully.";
         $this->log_action($name, $args, 'PENDING');
         try {
             switch ($name) {
-                // ... (All existing tool cases remain the same) ...
                 case 'perform_site_wide_audit': $result = $this->perform_site_wide_audit($args['limit'] ?? 20); break;
                 case 'fix_site_wide_issues': $result = $this->fix_site_wide_issues($args['limit'] ?? 20); break;
                 case 'create_content': $result = $this->create_content_wrapper($args); break;
@@ -365,6 +329,12 @@ class AutonomousUtilityAgent {
                 case 'manage_code_snippet': $result = $this->manage_code_snippet($args); break;
                 case 'configure_smtp': $result = $this->tool_configure_smtp($args); break;
                 case 'broadcast_newsletter': $result = $this->broadcast_newsletter($args['subject'], $args['body']); break;
+                
+                // ** UPDATED TOOL CASES **
+                case 'add_draft_excerpts': $result = $this->tool_add_draft_excerpts($args['word_limit'] ?? 55); break;
+                case 'manage_draft_terms': $result = $this->tool_manage_draft_terms($args['terms'], $args['taxonomy'] ?? 'post_tag', $args['action']); break;
+                case 'generate_draft_tags': $result = $this->tool_generate_draft_tags($args['taxonomy'] ?? 'post_tag', $args['max_tags'] ?? 5); break;
+
                 default: $result = "Error: Unknown tool $name";
             }
             $this->log_action($name, "Result: " . substr(json_encode($result), 0, 500), 'SUCCESS');
@@ -380,7 +350,6 @@ class AutonomousUtilityAgent {
     // =============================================================================
 
     private function get_legacy_tool_definitions() {
-        // ... (Tool descriptions remain the same, as they define the functionality) ...
         return [
             ['name' => 'perform_site_wide_audit', 'description' => 'Scans ALL posts/pages for SEO/Compliance issues.', 'parameters' => ['type' => 'OBJECT', 'properties' => ['limit' => ['type' => 'INTEGER']]]],
             ['name' => 'fix_site_wide_issues', 'description' => 'Fixes detected issues site-wide.', 'parameters' => ['type' => 'OBJECT', 'properties' => ['limit' => ['type' => 'INTEGER']]]],
@@ -392,7 +361,6 @@ class AutonomousUtilityAgent {
     }
 
     private function get_god_mode_tool_definitions() {
-        // ... (Tool definitions remain the same) ...
         return [
             ['name' => 'run_db_cleanup', 'description' => 'Executes comprehensive, safe maintenance queries. Deletes revisions, spam, transients.', 'parameters' => ['type' => 'OBJECT', 'properties' => ['scope' => ['type' => 'STRING', 'description' => 'Optional: "revisions", "transients", "spam", or "full".']]]],
             ['name' => 'get_wp_option', 'description' => 'Reads a wp_option value.', 'parameters' => ['type' => 'OBJECT', 'properties' => ['option_name' => ['type' => 'STRING']], 'required' => ['option_name']]],
@@ -429,17 +397,116 @@ class AutonomousUtilityAgent {
                     ],
                     'required' => ['subject', 'body']
                 ]
+            ],
+            // ** NEW TOOL: ADD DRAFT EXCERPTS **
+            [
+                'name' => 'add_draft_excerpts',
+                'description' => 'Generates and saves excerpts for ALL existing post drafts using post content.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'word_limit' => ['type' => 'INTEGER', 'description' => 'Optional. The maximum number of words for the excerpt. Defaults to 55.']
+                    ]
+                ]
+            ],
+            // ** NEW TOOL: MANAGE DRAFT TERMS (MANUAL) **
+            [
+                'name' => 'manage_draft_terms',
+                'description' => 'Adds or removes SPECIFIED tags or taxonomy terms from post drafts. Use this when the user provides the tags.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'terms' => ['type' => 'STRING', 'description' => 'A comma-separated list of tags/terms.'],
+                        'taxonomy' => ['type' => 'STRING', 'description' => 'Optional. Defaults to "post_tag".'],
+                        'action' => ['type' => 'STRING', 'description' => 'Required. Must be "add" or "remove".']
+                    ],
+                    'required' => ['terms', 'action']
+                ]
+            ],
+            // ** NEW TOOL: GENERATE DRAFT TAGS (AUTO) **
+            [
+                'name' => 'generate_draft_tags',
+                'description' => 'Analyzes the content of ALL post drafts and automatically generates relevant tags (keywords) for each post.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'taxonomy' => ['type' => 'STRING', 'description' => 'Optional. Defaults to "post_tag".'],
+                        'max_tags' => ['type' => 'INTEGER', 'description' => 'Optional. Max tags per post. Default 5.']
+                    ]
+                ]
             ]
         ];
     }
 
     // =============================================================================
-    // 5. TOOL IMPLEMENTATIONS (All implementations remain the same, only keys/names change)
+    // 5. TOOL IMPLEMENTATIONS
     // =============================================================================
+
+    // --- NEW: AUTO-TAGGING LOGIC ---
+    public function tool_generate_draft_tags($taxonomy = 'post_tag', $max_tags = 5) {
+        $draft_posts = get_posts(['post_type' => 'post', 'post_status' => 'draft', 'posts_per_page' => -1]);
+        if (empty($draft_posts)) return "No post drafts found to process.";
+
+        $count = 0;
+        // Basic English Stopwords
+        $stopwords = ['the','be','to','of','and','a','in','that','have','i','it','for','not','on','with','he','as','you','do','at','this','but','his','by','from','they','we','say','her','she','or','an','will','my','one','all','would','there','their','what','so','up','out','if','about','who','get','which','go','me','when','make','can','like','time','no','just','him','know','take','people','into','year','your','good','some','could','them','see','other','than','then','now','look','only','come','its','over','think','also','back','after','use','two','how','our','work','first','well','way','even','new','want','because','any','these','give','day','most','us'];
+
+        foreach ($draft_posts as $post) {
+            $text = strtolower(strip_tags($post->post_title . ' ' . $post->post_content));
+            $text = preg_replace('/[^\w\s]/', '', $text); // Remove punctuation
+            $words = array_diff(explode(' ', $text), $stopwords);
+            $word_counts = array_count_values(array_filter($words, function($w) { return strlen($w) > 3; }));
+            
+            arsort($word_counts);
+            $top_tags = array_slice(array_keys($word_counts), 0, $max_tags);
+            
+            if (!empty($top_tags)) {
+                wp_set_post_terms($post->ID, $top_tags, $taxonomy, true); // Append tags
+                $count++;
+            }
+        }
+        $this->log_action('generate_draft_tags', "Generated tags for $count posts.", 'SUCCESS');
+        return "Successfully analyzed and added tags to $count post drafts.";
+    }
+
+    // --- NEW: MANUAL TERM MANAGEMENT ---
+    public function tool_manage_draft_terms($terms, $taxonomy = 'post_tag', $action = 'add') {
+        $draft_posts = get_posts(['post_type' => 'post', 'post_status' => 'draft', 'posts_per_page' => -1, 'fields' => 'ids']);
+        if (empty($draft_posts)) return "No post drafts found.";
+
+        $terms_array = array_map('trim', explode(',', $terms));
+        $count = 0;
+        
+        foreach ($draft_posts as $post_id) {
+            $existing_terms = wp_get_post_terms($post_id, $taxonomy, ['fields' => 'names']);
+            $new_terms = ($action === 'add') ? array_unique(array_merge($existing_terms, $terms_array)) : array_diff($existing_terms, $terms_array);
+            $success = wp_set_post_terms($post_id, $new_terms, $taxonomy, false);
+            if (!is_wp_error($success)) $count++;
+        }
+        $this->log_action('manage_draft_terms', "Action: $action, Terms: $terms", 'SUCCESS');
+        return "Performed action '{$action}' with terms '{$terms}' on {$count} post drafts.";
+    }
+
+    // --- NEW: EXCERPT MANAGEMENT ---
+    public function tool_add_draft_excerpts($word_limit = 55) {
+        $draft_posts = get_posts(['post_type' => 'post', 'post_status' => 'draft', 'posts_per_page' => -1, 'fields' => 'ids']);
+        if (empty($draft_posts)) return "No post drafts found.";
+
+        $count = 0;
+        foreach ($draft_posts as $post_id) {
+            $post = get_post($post_id);
+            if (!$post) continue;
+            add_filter('excerpt_length', function($len) use ($word_limit) { return $word_limit; }, 9999);
+            $excerpt_text = wp_trim_excerpt('', $post);
+            remove_filter('excerpt_length', '__return_false', 9999);
+            if (!is_wp_error(wp_update_post(['ID' => $post->ID, 'post_excerpt' => $excerpt_text], true))) $count++;
+        }
+        $this->log_action('add_draft_excerpts', "Processed $count drafts.", 'SUCCESS');
+        return "Added excerpts to $count post drafts.";
+    }
 
     // --- NEW: SMTP CONFIGURATION ---
     public function tool_configure_smtp($args) {
-        // Option keys renamed
         update_option('auto_util_smtp_host', $args['host']);
         update_option('auto_util_smtp_user', $args['user']);
         update_option('auto_util_smtp_pass', $args['pass']);
@@ -447,9 +514,8 @@ class AutonomousUtilityAgent {
         return "SMTP Configured. Emails will now route through {$args['host']}.";
     }
 
-    // --- NEW: SMTP HOOK (The Engine) ---
+    // --- NEW: SMTP HOOK ---
     public function configure_smtp_mailer($phpmailer) {
-        // Option keys renamed
         $host = get_option('auto_util_smtp_host');
         $user = get_option('auto_util_smtp_user');
         $pass = get_option('auto_util_smtp_pass');
@@ -491,7 +557,6 @@ class AutonomousUtilityAgent {
 
         if (!is_email($email)) wp_send_json_error(['message' => 'Invalid Email']);
 
-        // Table renamed
         $wpdb->replace($this->table_subscribers, [
             'email' => $email,
             'name' => $name,
@@ -502,7 +567,7 @@ class AutonomousUtilityAgent {
         wp_send_json_success(['message' => 'Subscribed successfully!']);
     }
 
-    // ... (All existing V3.9 implementations remain here, using generic table/option names) ...
+    // ... (All existing implementations: run_db_cleanup, get_wp_option, etc.) ...
     public function run_db_cleanup($scope = 'full') {
         global $wpdb;
         $log = []; $total_deleted = 0;
@@ -525,7 +590,6 @@ class AutonomousUtilityAgent {
 
     public function set_maintenance_mode($state) {
         $state = strtolower($state);
-        // Option key renamed
         if ($state === 'on') {
              update_option('auto_util_maintenance_status', 'on');
              file_put_contents(ABSPATH . '.maintenance', "<?php \$upgrading = " . time() . "; ?>"); 
@@ -539,14 +603,13 @@ class AutonomousUtilityAgent {
     }
 
     public function check_maintenance_mode() {
-        // Option key renamed
         if (get_option('auto_util_maintenance_status', 'off') === 'on' && !current_user_can('manage_options')) {
             header('Retry-After: 3600'); wp_die('<h1>Site Under Maintenance</h1><p>We will be back shortly.</p>', 'Maintenance Mode', ['response' => 503]);
         }
     }
     
     public function manage_code_snippet($args) {
-        global $wpdb; $table = $wpdb->prefix . 'auto_util_code_snippets'; // Table renamed
+        global $wpdb; $table = $wpdb->prefix . 'auto_util_code_snippets';
         $action = $args['action']; $name = sanitize_text_field($args['name']);
         if ($action === 'delete') { return $wpdb->delete($table, ['name' => $name]) ? "Deleted '$name'." : "Error deleting '$name'."; }
         if (in_array($action, ['activate', 'deactivate'])) { 
@@ -564,7 +627,7 @@ class AutonomousUtilityAgent {
     }
 
     public function run_active_snippets() {
-        global $wpdb; $table = $wpdb->prefix . 'auto_util_code_snippets'; // Table renamed
+        global $wpdb; $table = $wpdb->prefix . 'auto_util_code_snippets';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table'") != $table) return;
 
         $snippets = $wpdb->get_results("SELECT code, type, location, priority FROM $table WHERE status = 'active' ORDER BY priority ASC");
@@ -576,22 +639,24 @@ class AutonomousUtilityAgent {
         }
     }
     
-    // ... (other simplified tool implementations remain the same) ...
     public function audit_page_seo($target) {
         $post_id = $this->resolve_post_id($target);
         if (!is_numeric($post_id)) return ['error' => $post_id];
+        
         $content = get_post_field('post_content', $post_id); 
         if (!$content) return ['issues' => ['No content']];
         $dom = new DOMDocument(); @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         $issues = []; if ($dom->getElementsByTagName('h1')->length !== 1) $issues[] = 'H1_Check_Failed';
         $imgs = $dom->getElementsByTagName('img'); if ($imgs->length > 0 && (!$imgs->item(0)->hasAttribute('width'))) $issues[] = 'Missing_Image_Dimensions';
         $inputs = $dom->getElementsByTagName('input'); foreach ($inputs as $input) { if ($input->hasAttribute('autofocus')) $issues[] = 'Autofocus_Input_Detected'; }
+        
         return ['post_id' => $post_id, 'list_of_issues' => $issues];
     }
 
     public function scan_compliance_markers($target) {
         $post_id = $this->resolve_post_id($target);
         if (!is_numeric($post_id)) return "Error: $post_id";
+        
         $content = get_post_field('post_content', $post_id); $markers = ['Privacy Policy', 'Terms of Service', 'GDPR', 'HIPAA', 'Cookie', 'Disclaimer'];
         $found = []; $missing = [];
         foreach ($markers as $term) { (stripos($content, $term) !== false) ? $found[] = $term : $missing[] = $term; }
